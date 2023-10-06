@@ -17,7 +17,7 @@ def compute_grad(theta):
 
 def compute_loss(theta):
     t1, t2 = theta
-    return np.power(t1, 4), np.power(t1, 2), + t1 * t2 + np.power(t2, 2)
+    return np.power(t1, 4) + np.power(t1, 2) + t1 * t2 + np.power(t2, 2)
 
 
 def generate_noise(sigma):
@@ -63,7 +63,7 @@ for sigma in sigma_list:
 def generate_x_pairs(max_sample_num=1000):
     c = np.random.randint(1, 11, size=max_sample_num)
     w = np.random.randint(11, 111, size=max_sample_num)
-    return np.stack([c,w], 1)
+    return np.stack([w,c], 1)
 
 def init_theta():
     return np.array([1., .5])
@@ -85,12 +85,29 @@ def generate_noise_2(optimal_theta, x):
 
 def compute_h(theta, x):
     lmbd, beta = theta
-    c, w = x
+    w, c = x
     return lmbd * np.power(c, beta) * np.power(w, 1-beta)
 
 
 def compute_euclidian(theta, optimal_theta):
     return np.sqrt(np.sum(np.power(theta - optimal_theta, 2)))
+
+
+def compute_grad(theta, x):
+    lmbd, beta = theta
+    w, c = x
+    grad_lmbd = w * np.power(c / w, beta)
+    grad_beta = lmbd * w * np.power(c / w, beta) * np.log(c / w)
+    
+    return np.array([grad_lmbd, grad_beta])
+
+
+def update_theta(theta, gain_seq, grad, x, z):
+    # h = compute_h(theta, x_sample)
+    h = compute_h(theta, x)
+    return theta - gain_seq * grad * (h - z)
+    
+
 
 
 max_iter = 1000
@@ -101,23 +118,80 @@ x = generate_x_pairs()
 for noisy_type in ["Independent", "Dependent"]:
 
     for seed in range(max_repl):
+        theta = init_theta()
         np.random.seed(seed)
         np.random.shuffle(x)
         
         for iter, x_sample in enumerate(x):
             gain_seq = generate_gain_seq(iter+1)
-            x_sample
+            
             if noisy_type == "Independent":
                 noise = generate_noise_1()
             else:
                 noise = generate_noise_2(optimal_theta, x_sample)
 
-            z = compute_h(theta, x_sample) + noise
-            
+            z = compute_h(optimal_theta, x_sample) + noise
+            grad = compute_grad(theta, x_sample)
 
+            theta = update_theta(theta, gain_seq, grad, x_sample, z)
+        print(f"[{noisy_type} Noise / Replication {seed+1}] theta = {theta}")
 
-## Ex) 4.10
-#%%
 
 ## Ex) 4.15
 #%%
+def init_theta():
+    return np.ones([2])
+
+
+def compute_grad(theta):
+    t1, t2 = theta
+    grad_t1 = 4 * np.power(t1, 3) + 2 * t1 + t2
+    grad_t2 = t1 + 2 * t2
+    return np.array(grad_t1, grad_t2)
+
+
+def compute_loss(theta):
+    t1, t2 = theta
+    return np.power(t1, 4) + np.power(t1, 2) + t1 * t2 + np.power(t2, 2)
+
+
+def generate_noise(sigma):
+    return np.random.multivariate_normal(np.zeros([2]), np.identity(2) * sigma**2)
+
+
+def generate_gain_seq(iter):
+    return 0.1 / np.power(iter + 1, 0.501)
+
+
+def update_theta(theta, grad, gain_seq):
+    return theta - gain_seq * grad
+
+
+max_iter = 1000
+max_repl = 50
+sigma = 1.0
+
+results = []
+for seed in range(max_repl):
+    np.random.seed(seed)
+    theta = init_theta()
+
+    theta_list = [theta]
+    for iter in range(1, max_iter+1): 
+        noise = generate_noise(sigma)
+        grad = compute_grad(theta) + noise
+        gain_seq = generate_gain_seq(iter)
+        theta = update_theta(theta, grad, gain_seq)
+        theta_list.append(theta)
+
+    standard_loss = compute_loss(theta)
+    iter100_avg_loss = compute_loss(np.mean(theta_list[-100:], axis=0))
+    iter_avg_loss = compute_loss(np.mean(theta_list, axis=0))
+    results.append(np.array([standard_loss, iter100_avg_loss, iter_avg_loss]))
+
+
+results_arr = np.stack(results, 0)
+experiments = ["Standard", "Iterative Averaging recent 100", "Iterative Averaging"]
+for i in range(3):
+    print(f"[{experiments[i]}] Terminal loss: {np.round(np.mean(results_arr[:,i]), 4)} ± {np.round(np.std(results_arr[:,i], ddof=1), 4)}")
+
