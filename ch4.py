@@ -103,11 +103,8 @@ def compute_grad(theta, x):
 
 
 def update_theta(theta, gain_seq, grad, x, z):
-    # h = compute_h(theta, x_sample)
     h = compute_h(theta, x)
     return theta - gain_seq * grad * (h - z)
-    
-
 
 
 max_iter = 1000
